@@ -1,14 +1,19 @@
-import pandas as pd
-import numpy as np
-import os
+import matplotlib.pyplot as plt
 from random import randrange
 from copy import deepcopy
+import pandas as pd
+import numpy as np
+import calendar
+import time
+import os
 
-
+# Risultati ciclico
+# Timestamp e organizzazione dei risultati
 # calcolare il valore di scale su carta e le runs (solo due esempi, max)
 
 mat_cols = 12  # Number of values
 mat_rows = 0  # Number of stations
+dir_results = './Results/'
 
 
 def print_menu():
@@ -62,8 +67,8 @@ def run_simulation(mat_values, number_of_run, interval, noisy_values):
         mat_values_modified = deepcopy(add_data_noise(mat_values, interval))
         print('\n')
         print(mat_values_modified)
-        avg_modified = mat_values_modified.mean()  # Media della matrice con il rumore aggiunto ad ogni dato
-        list_avg_mat_modified.append(avg_modified)  # Aggiungo la media alla matrice con i dati rumorosi
+        avg_modified = mat_values_modified.mean()
+        list_avg_mat_modified.append(avg_modified)
         selected_noises = []
         noise_number = 0
         while noise_number < noisy_values:
@@ -114,18 +119,55 @@ def input_single_simulation(mat_values):
               'be integers greater than or equal to 1')
         return -1
     mat_for_simulation = mat_values[:, 0:interval]
-    avg_real_values, list_avg_mat_modified, result = run_simulation(mat_for_simulation, number_of_runs, interval, noisy_values)
+    avg_real_values, list_avg_mat_modified, result = run_simulation(mat_for_simulation, number_of_runs, interval,
+                                                                    noisy_values)
     print_single_result(mat_rows*interval, noisy_values, avg_real_values, list_avg_mat_modified, result)
 
 
 def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_modified, result):
-    df = pd.DataFrame(columns=['N_of_values', 'N_of_noises', 'Real_Avg', 'Avg_modified_mat', 'Noisy_mat_avg',
-                               'Real-Modified_avg', 'Real-Noisy_avg', 'Modified-Noisy_avg'])
+    global dir_results
+    directory_this_results = dir_results + str(calendar.timegm(time.gmtime())) + '/'
+    os.mkdir(directory_this_results)
+    # CSV
+    df1 = pd.DataFrame(columns=['#Run', 'N_of_values', 'N_of_noises', 'Real_Avg', 'Avg_modified_mat', 'Noisy_mat_avg',
+                                'Real-Modified_avg', 'Real-Noisy_avg', 'Modified-Noisy_avg'])
     for i in range(0, len(result)):
-        df.loc[i] = [n_of_values] + [n_of_noises] + [avg_real_values] + [list_avg_mat_modified[i]] + [result[i]] + \
-                    [avg_real_values-list_avg_mat_modified[i]] + [avg_real_values-result[i]] + \
+        df1.loc[i] = [i] + [n_of_values] + [n_of_noises] + [avg_real_values] + [list_avg_mat_modified[i]] + \
+                    [result[i]] + [avg_real_values-list_avg_mat_modified[i]] + [avg_real_values-result[i]] + \
                     [list_avg_mat_modified[i]-result[i]]
-    df.to_csv('file.csv')  # Aggiungere timestamp
+    df1.to_csv(directory_this_results + 'Result_runs.csv')  # Aggiungere timestamp al nome del file ecc
+
+    # Chart
+    df1.plot(x='#Run', y="Noisy_mat_avg")
+    plt.savefig(directory_this_results + 'Noisy_matrix.pdf')
+
+    # Salvare la media delle temperature: modificare, rumorose e degli altri tre valori
+    df2 = pd.DataFrame(columns=['Total_avg_modified_mat', 'Total_noisy_mat_avg', 'Total_real-modified_avg',
+                                'Total_real-noisy_avg', 'Total_modified-noisy_avg'])
+    total_avg_modified_mat = sum(list_avg_mat_modified) / len(list_avg_mat_modified)
+    total_noisy_mat_avg = sum(result) / len(result)
+    real_modified = df1['Real-Modified_avg'].to_list()
+    real_modified_avg = sum(real_modified) / len(real_modified)
+    real_noisy = df1['Real-Noisy_avg'].to_list()
+    real_noisy_avg = sum(real_noisy) / len(real_noisy)
+    mod_noisy = df1['Modified-Noisy_avg'].to_list()
+    mod_noisy_avg = sum(mod_noisy) / len(mod_noisy)
+    df2.loc[0] = [total_avg_modified_mat] + [total_noisy_mat_avg] + [real_modified_avg] + \
+                 [real_noisy_avg] + [mod_noisy_avg]
+    df2.to_csv(directory_this_results + 'Final_Results.csv')
+
+    # Chart Medie
+    avg_df = pd.DataFrame({'AVG Matrix': ['Real', 'Modified', 'Noisy'], 'Values': [avg_real_values,
+                                                                                       total_avg_modified_mat,
+                                                                                       total_noisy_mat_avg]})
+    avg_df.plot.bar(x='AVG Matrix', y='Values', rot=0)
+    plt.savefig(directory_this_results + 'Bar_chart_avg.pdf')
+
+    # Char differenza medie
+    diff_avg_df = pd.DataFrame({'Differences': ['Real-Modified', 'Real-Noisy', 'Modified-Noisy'],
+                                'Values': [real_modified_avg, real_noisy_avg, mod_noisy_avg]})
+    diff_avg_df.plot.bar(x='Differences', y="Values", rot=0)
+    plt.savefig(directory_this_results + 'Bar_chart_diff_avg.pdf')
 
 
 def input_automatic_simulation(mat_values):
@@ -158,6 +200,14 @@ def closing_simulator():
 
 def main():
     global mat_cols
+
+    try:
+        if not os.path.isdir(dir_results):
+            os.mkdir(dir_results)
+    except OSError:
+        print('Error creating results directory')
+        closing_simulator()
+
     # Data
     path_station = './StazioniBolognaWU/'
     mat_values = read_values(path_station)
