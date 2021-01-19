@@ -81,7 +81,6 @@ def run_simulation(mat_values, number_of_run, interval, noisy_values):
                 noise_number += 1
                 index_laplace_noise += 1
                 index_gamma_noise += 2
-            print(f'{interval} {noise_number} {noisy_values} {interval * mat_rows}')
         result.append(mat_values_modified.mean())
     return avg_real_values, list_avg_mat_modified, result
 
