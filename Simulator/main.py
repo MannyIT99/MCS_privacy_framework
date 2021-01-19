@@ -14,7 +14,7 @@ mat_rows = 0  # Number of stations
 dir_res_single_sim = './Results/Single Simulations/'
 dir_res_automatic_sim = './Results/Automatic Simulations/'
 g_n = 0.01
-l_n = 5
+l_n = 3
 
 
 def print_menu():
