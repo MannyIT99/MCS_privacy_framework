@@ -105,11 +105,13 @@ def cycle_run_simulation(mat_values, number_of_run, from_zero_to_interval, from_
                 res_single_interval.append(print_single_result(mat_rows*index_interval, index_noise, avg_real_values,
                                                                list_avg_mat_modified, result,
                                                                save_dir+'N('+str(index_noise)+')/'))
-                df_interval = pd.DataFrame(columns=['#Noise', 'AVG'])
-                for i in range(1, len(res_single_interval) + 1):
-                    df_interval.loc[i] = [i] + [res_single_interval[i-1]]
-                    df_interval.plot(x='#Noise', y='AVG')
-                    plt.savefig(f'{dir_name}Interval #{index_interval}/Interval {index_interval}.pdf')
+
+        df_interval = pd.DataFrame(columns=['#Noise', 'AVG'])
+        for i in range(1, len(res_single_interval) + 1):
+            df_interval.loc[i] = [i] + [res_single_interval[i-1]]
+        df_interval.plot(x='#Noise', y='AVG')
+        plt.savefig(f'{dir_name}Interval #{index_interval}/Interval {index_interval}.pdf')
+        plt.close()
 
 
 def input_single_simulation(mat_values):
@@ -182,6 +184,7 @@ def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_
                                 'Values': [real_modified_avg, real_noisy_avg, mod_noisy_avg]})
     diff_avg_df.plot.bar(x='Differences', y="Values", rot=0)
     plt.savefig(save_dir + 'Bar_chart_diff_avg.pdf')
+    plt.close()
 
     return total_noisy_mat_avg
 
