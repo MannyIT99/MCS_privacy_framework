@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
-from random import randint
+from matplotlib import rcParams, rcParamsDefault
+import random
 from copy import deepcopy
+import statistics
 from pathlib import Path
+import seaborn as sns
 import pandas as pd
 import numpy as np
 import calendar
@@ -36,11 +39,13 @@ def read_values(path_stations):
     stations.sort()
     mat_rows = len(stations)  # Number of stations
     mat_values = np.zeros((mat_rows, mat_cols))
+    mat_pos = np.zeros((mat_rows, mat_cols), dtype=object)
     for i in range(0, mat_rows):
         station_file = pd.read_csv(path_stations + stations[i])
         for j in range(0, mat_cols):
             mat_values[i, j] = station_file.at[j, 'TemperatureC']
-    return mat_values
+            mat_pos[i, j] = [i, j]
+    return mat_values, mat_pos
 
 
 def add_data_noise(mat_values, interval):
@@ -54,7 +59,7 @@ def add_data_noise(mat_values, interval):
     return mat_values
 
 
-def run_simulation(mat_values, number_of_run, interval, noisy_values):
+def run_simulation(mat_values, mat_pos, number_of_run, interval, noisy_values):
     global mat_rows, g_n, l_n
     avg_real_values = mat_values.mean()
     list_avg_mat_modified = []
@@ -67,54 +72,64 @@ def run_simulation(mat_values, number_of_run, interval, noisy_values):
         mat_values_modified = deepcopy(add_data_noise(mat_values, interval))
         avg_modified = mat_values_modified.mean()
         list_avg_mat_modified.append(avg_modified)
-        selected_noises = []
         noise_number = 0
 
-        while noise_number < noisy_values:
-            row_rand = randint(0, mat_rows-1)
-            col_rand = randint(0, interval-1)
-            if not [row_rand, col_rand] in selected_noises:
-                selected_noises.append([row_rand, col_rand])
-                mat_values_modified[row_rand, col_rand] = gamma_noise[index_gamma_noise] - \
-                                                          gamma_noise[index_gamma_noise + 1] + \
-                                                          abs(laplace_noise[noise_number])
-                noise_number += 1
-                index_laplace_noise += 1
-                index_gamma_noise += 2
+        noisy_item = random.sample(mat_pos, noisy_values)
+        for i in range(len(noisy_item)):
+            mat_values_modified[noisy_item[i][0], noisy_item[i][1]] = gamma_noise[index_gamma_noise] - \
+                                                                      gamma_noise[index_gamma_noise + 1] + \
+                                                                      abs(laplace_noise[noise_number])
+            noise_number += 1
+            index_laplace_noise += 1
+            index_gamma_noise += 2
         result.append(mat_values_modified.mean())
     return avg_real_values, list_avg_mat_modified, result
 
 
-def cycle_run_simulation(mat_values, number_of_run, from_zero_to_interval, from_zero_to_noise):
+def cycle_run_simulation(mat_values, mat_pos, number_of_run, from_zero_to_interval, from_zero_to_noise):
     global dir_res_automatic_sim, mat_rows
     dir_name = dir_res_automatic_sim + str(calendar.timegm(time.gmtime())) + '/'
     check_dir_res(dir_name)
 
-    for index_interval in range(1, from_zero_to_interval + 1):
-        res_single_interval = []
+    for index_interval in range(11, from_zero_to_interval + 1):
         save_dir = dir_name + 'Interval #' + str(index_interval) + '/'
+        res_single_interval = pd.DataFrame(columns=['Noise', 'AVG', 'Total'])
+        index_noise = 1
+        mat_pos2 = deepcopy(mat_pos)
+        mat_for_position = mat_pos2[:, 0:index_interval]
+        list_mat_for_sim = []
+        for i in range(0, mat_rows):
+            for j in range(0, index_interval):
+                list_mat_for_sim.append(mat_for_position[i, j])
         for index_noise in range(1, from_zero_to_noise + 1):
             if index_noise >= mat_rows * index_interval:
                 break
             else:
                 mat_values2 = deepcopy(mat_values)
                 mat_for_simulation = mat_values2[:, 0:index_interval]
-                avg_real_values, list_avg_mat_modified, result = run_simulation(mat_for_simulation,
+                avg_real_values, list_avg_mat_modified, result = run_simulation(mat_for_simulation, list_mat_for_sim,
                                                                                 number_of_run, index_interval,
                                                                                 index_noise)
-                res_single_interval.append(print_single_result(mat_rows*index_interval, index_noise, avg_real_values,
-                                                               list_avg_mat_modified, result,
-                                                               save_dir+'N('+str(index_noise)+')/'))
-
-        df_interval = pd.DataFrame(columns=['#Noise', 'AVG'])
-        for i in range(1, len(res_single_interval) + 1):
-            df_interval.loc[i] = [i] + [res_single_interval[i-1]]
-        df_interval.plot(x='#Noise', y='AVG')
-        plt.savefig(f'{dir_name}Interval #{index_interval}/Interval {index_interval}.pdf')
+                res_single_interval = print_single_result(mat_rows*index_interval, index_noise, avg_real_values,
+                                                          list_avg_mat_modified, result,
+                                                          save_dir+'N('+str(index_noise)+')/',
+                                                          True, res_single_interval)
+        sns.boxplot(data=res_single_interval, x='Total', y='AVG')
+        plt.savefig(save_dir + f'Interval {index_interval} - Total.pdf')
         plt.close()
+        res_single_interval.drop(columns=['Total'])
+        res_single_interval.to_csv(save_dir + f'Interval {index_interval}.csv')
+        sns.lineplot(data=res_single_interval, x="Noise", y="AVG")
+        plt.savefig(save_dir + f'Interval {index_interval} (Line).pdf')
+        plt.close()
+        rcParams['figure.figsize'][0] = round(index_noise / 2)
+        sns.boxplot(data=res_single_interval, x="Noise", y="AVG")
+        plt.savefig(save_dir + f'Interval {index_interval} (BoxPlot).pdf')
+        plt.close()
+        rcParams.update(rcParamsDefault)
 
 
-def input_single_simulation(mat_values):
+def input_single_simulation(mat_values, mat_pos):
     global mat_cols, mat_rows
     print('SINGLE SIMULATION')
     try:
@@ -135,13 +150,20 @@ def input_single_simulation(mat_values):
               'be integers greater than or equal to 1')
         return -1
     mat_for_simulation = mat_values[:, 0:interval]
-    avg_real_values, list_avg_mat_modified, result = run_simulation(mat_for_simulation, number_of_runs, interval,
+    mat_for_position = mat_pos[:, 0:interval]
+    list_mat_for_sim = []
+    for i in range(0, mat_rows):
+        for j in range(0, interval):
+            list_mat_for_sim.append(mat_for_position[i, j])
+    avg_real_values, list_avg_mat_modified, result = run_simulation(mat_for_simulation, list_mat_for_sim, number_of_runs, interval,
                                                                     noisy_values)
     dir_name = dir_res_single_sim + str(calendar.timegm(time.gmtime())) + '/'
-    print_single_result(mat_rows*interval, noisy_values, avg_real_values, list_avg_mat_modified, result, dir_name)
+    print_single_result(mat_rows*interval, noisy_values, avg_real_values, list_avg_mat_modified, result, dir_name,
+                        False)
 
 
-def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_modified, result, save_dir):
+def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_modified, result, save_dir, cyclic,
+                        res_single_interval=None):
     global dir_res_single_sim, dir_res_automatic_sim
     check_dir_res(dir_res_single_sim)
     check_dir_res(dir_res_automatic_sim)
@@ -149,10 +171,18 @@ def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_
 
     df1 = pd.DataFrame(columns=['#Run', 'N_of_values', 'N_of_noises', 'Real_Avg', 'Avg_modified_mat', 'Noisy_mat_avg',
                                 'Real-Modified_avg', 'Real-Noisy_avg', 'Modified-Noisy_avg'])
-    for i in range(0, len(result)):
-        df1.loc[i] = [i] + [n_of_values] + [n_of_noises] + [avg_real_values] + [list_avg_mat_modified[i]] + \
-                    [result[i]] + [avg_real_values-list_avg_mat_modified[i]] + [avg_real_values-result[i]] + \
-                    [list_avg_mat_modified[i]-result[i]]
+
+    if cyclic:
+        for i in range(0, len(result)):
+            df1.loc[i] = [i] + [n_of_values] + [n_of_noises] + [avg_real_values] + [list_avg_mat_modified[i]] + \
+                         [result[i]] + [avg_real_values-list_avg_mat_modified[i]] + [avg_real_values-result[i]] + \
+                         [list_avg_mat_modified[i]-result[i]]
+            res_single_interval.loc[len(res_single_interval)] = [n_of_noises, result[i], '-']
+    else:
+        for i in range(0, len(result)):
+            df1.loc[i] = [i] + [n_of_values] + [n_of_noises] + [avg_real_values] + [list_avg_mat_modified[i]] + \
+                         [result[i]] + [avg_real_values-list_avg_mat_modified[i]] + [avg_real_values-result[i]] + \
+                         [list_avg_mat_modified[i]-result[i]]
     df1.to_csv(save_dir + 'Result_runs.csv')
 
     df1.plot(x='#Run', y="Noisy_mat_avg")
@@ -160,7 +190,7 @@ def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_
     plt.close()
 
     df2 = pd.DataFrame(columns=['Total_avg_modified_mat', 'Total_noisy_mat_avg', 'Total_real-modified_avg',
-                                'Total_real-noisy_avg', 'Total_modified-noisy_avg'])
+                                'Total_real-noisy_avg', 'Total_modified-noisy_avg', 'Std'])
     total_avg_modified_mat = sum(list_avg_mat_modified) / len(list_avg_mat_modified)
     total_noisy_mat_avg = sum(result) / len(result)
     real_modified = df1['Real-Modified_avg'].to_list()
@@ -170,7 +200,7 @@ def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_
     mod_noisy = df1['Modified-Noisy_avg'].to_list()
     mod_noisy_avg = sum(mod_noisy) / len(mod_noisy)
     df2.loc[0] = [total_avg_modified_mat] + [total_noisy_mat_avg] + [real_modified_avg] + \
-                 [real_noisy_avg] + [mod_noisy_avg]
+                 [real_noisy_avg] + [mod_noisy_avg] + [statistics.pstdev(result)]
     df2.to_csv(save_dir + 'Final_Results.csv')
 
     avg_df = pd.DataFrame({'AVG Matrix': ['Real', 'Modified', 'Noisy'], 'Values': [avg_real_values,
@@ -186,10 +216,10 @@ def print_single_result(n_of_values, n_of_noises, avg_real_values, list_avg_mat_
     plt.savefig(save_dir + 'Bar_chart_diff_avg.pdf')
     plt.close()
 
-    return total_noisy_mat_avg
+    return res_single_interval
 
 
-def input_automatic_simulation(mat_values):
+def input_automatic_simulation(mat_values, mat_pos):
     global mat_cols, mat_rows
     print('AUTOMATIC SIMULATION')
     try:
@@ -209,7 +239,7 @@ def input_automatic_simulation(mat_values):
         print('The number of runs, the interval and the number of missing values must '
               'be integers greater than or equal to 1')
         return -1
-    cycle_run_simulation(mat_values, number_of_runs, interval, noisy_values)
+    cycle_run_simulation(mat_values, mat_pos, number_of_runs, interval, noisy_values)
 
 
 def closing_simulator():
@@ -243,16 +273,16 @@ def main():
     check_dir_res(dir_res_automatic_sim)
 
     path_station = './StazioniBolognaWU/'
-    mat_values = read_values(path_station)
+    mat_values, mat_pos = read_values(path_station)
 
     while True:
         print_menu()
         simulation_choice = int(input('Enter the number related to the desired simulation: '))
         if simulation_choice == 1:
-            if input_single_simulation(mat_values) == -1:
+            if input_single_simulation(mat_values, mat_pos) == -1:
                 continue
         elif simulation_choice == 2:
-            if input_automatic_simulation(mat_values) == -1:
+            if input_automatic_simulation(mat_values, mat_pos) == -1:
                 continue
         elif simulation_choice == 0:
             closing_simulator()
