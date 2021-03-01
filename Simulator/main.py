@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from matplotlib import rcParams, rcParamsDefault
+import matplotlib as mpl
 import random
 from copy import deepcopy
 import statistics
@@ -13,11 +13,11 @@ import os
 
 
 mat_cols = 12  # Number of values
-mat_rows = 0  # Number of stations
+mat_rows = 10  # Number of stations
 dir_res_single_sim = './Results/Single Simulations/'
 dir_res_automatic_sim = './Results/Automatic Simulations/'
-g_n = 0.01
-l_n = 3
+l_n = g_n = 2
+shape_gamma = 1 / mat_rows
 
 
 def print_menu():
@@ -49,8 +49,8 @@ def read_values(path_stations):
 
 
 def add_data_noise(mat_values, interval):
-    global mat_rows, g_n
-    gamma_noise = np.random.default_rng().gamma(mat_rows, g_n, mat_rows*2*interval)
+    global mat_rows
+    gamma_noise = np.random.default_rng().gamma(shape_gamma, g_n, mat_rows*2*interval)
     index_gamma_noise = 0
     for i in range(0, mat_rows):
         for j in range(0, interval):
@@ -60,25 +60,27 @@ def add_data_noise(mat_values, interval):
 
 
 def run_simulation(mat_values, mat_pos, number_of_run, interval, noisy_values):
-    global mat_rows, g_n, l_n
+    global mat_rows, scale_value
     avg_real_values = mat_values.mean()
     list_avg_mat_modified = []
     result = []
     index_gamma_noise = 0
     index_laplace_noise = 0
-    gamma_noise = np.random.default_rng().gamma(mat_rows, g_n, noisy_values*2*number_of_run)
-    laplace_noise = np.random.default_rng().laplace(scale=l_n, size=noisy_values*number_of_run)
+    gamma_noise = np.random.default_rng().gamma(shape_gamma, g_n, noisy_values*2*number_of_run)
+    laplace_noise = np.random.default_rng().laplace(loc=avg_real_values, scale=l_n, size=noisy_values*number_of_run)
     for iter_simulation in range(0, number_of_run):
-        mat_values_modified = deepcopy(add_data_noise(mat_values, interval))
+        mat_values_to_noise = deepcopy(mat_values)
+        mat_values_modified = deepcopy(add_data_noise(mat_values_to_noise, interval))
         avg_modified = mat_values_modified.mean()
         list_avg_mat_modified.append(avg_modified)
         noise_number = 0
-
         noisy_item = random.sample(mat_pos, noisy_values)
+        
+        
         for i in range(len(noisy_item)):
             mat_values_modified[noisy_item[i][0], noisy_item[i][1]] = gamma_noise[index_gamma_noise] - \
                                                                       gamma_noise[index_gamma_noise + 1] + \
-                                                                      abs(laplace_noise[noise_number])
+                                                                      laplace_noise[index_laplace_noise]
             noise_number += 1
             index_laplace_noise += 1
             index_gamma_noise += 2
@@ -91,7 +93,7 @@ def cycle_run_simulation(mat_values, mat_pos, number_of_run, from_zero_to_interv
     dir_name = dir_res_automatic_sim + str(calendar.timegm(time.gmtime())) + '/'
     check_dir_res(dir_name)
 
-    for index_interval in range(11, from_zero_to_interval + 1):
+    for index_interval in [1, 4, 8, 12]:
         save_dir = dir_name + 'Interval #' + str(index_interval) + '/'
         res_single_interval = pd.DataFrame(columns=['Noise', 'AVG', 'Total'])
         index_noise = 1
@@ -114,19 +116,20 @@ def cycle_run_simulation(mat_values, mat_pos, number_of_run, from_zero_to_interv
                                                           list_avg_mat_modified, result,
                                                           save_dir+'N('+str(index_noise)+')/',
                                                           True, res_single_interval)
+        res_single_interval['Real_AVG'] = avg_real_values                            
         sns.boxplot(data=res_single_interval, x='Total', y='AVG')
         plt.savefig(save_dir + f'Interval {index_interval} - Total.pdf')
         plt.close()
-        res_single_interval.drop(columns=['Total'])
+        del res_single_interval['Total']
         res_single_interval.to_csv(save_dir + f'Interval {index_interval}.csv')
-        sns.lineplot(data=res_single_interval, x="Noise", y="AVG")
+        sns.lineplot(x='Noise', y='value', hue='variable', data=pd.melt(res_single_interval, ['Noise']))
         plt.savefig(save_dir + f'Interval {index_interval} (Line).pdf')
         plt.close()
-        rcParams['figure.figsize'][0] = round(index_noise / 2)
+        plt.rcParams['figure.figsize'][0] = round(index_noise / 2)
         sns.boxplot(data=res_single_interval, x="Noise", y="AVG")
         plt.savefig(save_dir + f'Interval {index_interval} (BoxPlot).pdf')
         plt.close()
-        rcParams.update(rcParamsDefault)
+        mpl.rc_file_defaults()
 
 
 def input_single_simulation(mat_values, mat_pos):
